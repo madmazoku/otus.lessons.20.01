@@ -16,5 +16,10 @@ int main(int argc, char** argv)
 
     r.read(std::cin);
 
+    cp.done();
+    fp.done();
+
+    Metrics::get_metrics().dump();
+
     return 0;
 }

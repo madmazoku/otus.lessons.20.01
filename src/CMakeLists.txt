@@ -10,7 +10,8 @@ endif()
 set(Boost_USE_STATIC_LIBS ON)
 set(Boost_USE_STATIC_RUNTIME ON)
 
-find_package(Boost COMPONENTS unit_test_framework REQUIRED)
+find_package(Boost COMPONENTS unit_test_framework filesystem REQUIRED)
+find_package(Threads REQUIRED)
 
 set(CPACK_GENERATOR DEB)
 
@@ -48,10 +49,12 @@ set_target_properties(bulk bulk_test PROPERTIES
     INCLUDE_DIRECTORIES ${Boost_INCLUDE_DIR}
 )
 
-target_link_libraries(bulk)
+target_link_libraries(bulk 
+    ${Boost_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT}
+)
 
 target_link_libraries(bulk_test
-    ${Boost_LIBRARIES}
+    ${Boost_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT}
 )
 
 install(TARGETS bulk RUNTIME DESTINATION bin)

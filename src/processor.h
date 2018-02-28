@@ -6,16 +6,45 @@
 #include <fstream>
 #include <ctime>
 #include <tuple>
+#include <map>
 
 #include <boost/lexical_cast.hpp>
+#include <boost/filesystem.hpp>
 
-using Commands = std::vector<std::tuple<time_t, std::string>>;
+#include "queue_processor.h"
+#include "metrics.h"
 
-class Processor
+using Command = std::tuple<time_t, std::string>;
+using Commands = std::vector<Command>;
+
+std::ostream& operator<<(std::ostream& out, const Command& command) {
+    out << " {" << std::get<0>(command) << ", " << std::get<1>(command) << "}";
+    return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const Commands& commands) {
+    for(auto c : commands)
+        std::cerr << ' ' << c;
+    return out;
+}
+
+class Processor : public QueueProcessor<Commands>
 {
 public:
 
-    virtual void process(const Commands&) = 0;
+    Processor(size_t thread_count) : QueueProcessor<Commands>() {
+        start(thread_count);
+    }
+
+    void process(const Commands& commands) {
+        add(commands, true);
+    }
+
+    void done() {
+        stop();
+        wait();
+        finish();
+    }
 };
 using Processors = std::vector<Processor*>;
 
@@ -43,15 +72,12 @@ class ConsolePrint : public Processor
 private:
     std::ostream& _out;
 
-public:
-    ConsolePrint(ProcessorSubscriber& ps, std::ostream& out = std::cout) : _out(out)
-    {
-        ps.subscribe(this);
-    }
-
-    virtual void process(const Commands& commands) final {
+    virtual void act(const Commands& commands, size_t qid) final {
         if(commands.size() == 0)
             return;
+
+        Metrics::get_metrics().update("console.blocks", 1);
+        Metrics::get_metrics().update("console.commands", commands.size());
 
         _out << "bulk: ";
         bool first = true;
@@ -65,6 +91,12 @@ public:
         }
         _out << std::endl;
     }
+
+public:
+    ConsolePrint(ProcessorSubscriber& ps, std::ostream& out = std::cout) : Processor(1), _out(out)
+    {
+        ps.subscribe(this);
+    }
 };
 
 class IFileWriter
@@ -73,6 +105,8 @@ public:
     virtual void open(const std::string& name) = 0;
     virtual std::ostream& out() = 0;
     virtual void close() = 0;
+    virtual bool exists(const std::string& name) = 0;
+    virtual IFileWriter* clone() = 0;
 };
 
 class FileWriter : public IFileWriter
@@ -90,35 +124,64 @@ public:
     virtual void close() final {
         _out.close();
     }
+    virtual bool exists(const std::string& name) final {
+        return boost::filesystem::exists(name);
+    }
+    virtual IFileWriter* clone() final {
+        return new FileWriter;
+    }
 };
 
 class FilePrint : public Processor
 {
 private:
     IFileWriter* _file_writer;
+    std::map<time_t, size_t> _log_counter;
+    std::mutex _log_counter_mutex;
+
+    virtual void act(const Commands& commands, size_t qid) final {
+        if(commands.size() == 0)
+            return;
+
+        std::string prefix = "file.";
+        Metrics::get_metrics().update(prefix + "blocks");
+        Metrics::get_metrics().update(prefix + "commands", commands.size());
+        prefix += boost::lexical_cast<std::string>(qid);
+        Metrics::get_metrics().update(prefix + ".blocks");
+        Metrics::get_metrics().update(prefix + ".commands", commands.size());
+
+        std::string name = "bulk";
+        time_t tm = std::get<0>(*(commands.begin()));
+        name += boost::lexical_cast<std::string>(tm);
+        name += "-";
+
+        size_t log_counter = 0;
+        {
+            std::lock_guard<std::mutex> lock_file(_log_counter_mutex);
+            auto it_cnt = _log_counter.find(tm);
+            if(it_cnt != _log_counter.end())
+                log_counter = ++(it_cnt->second);
+            else
+                _log_counter[tm] = log_counter;
+        }
+        std::string cnt = boost::lexical_cast<std::string>(log_counter);
+
+        IFileWriter* file_writer = _file_writer->clone();
+        file_writer->open(name + cnt + ".log");
+        for(auto c :commands)
+            file_writer->out() << std::get<1>(c) << std::endl;
+        file_writer->close();
+        delete file_writer;
+    }
 
 public:
-    FilePrint(ProcessorSubscriber& ps, IFileWriter* file_writer = new FileWriter) : _file_writer(file_writer)
+    FilePrint(ProcessorSubscriber& ps, IFileWriter* file_writer = new FileWriter) : Processor(2), _file_writer(file_writer)
     {
         ps.subscribe(this);
     }
     ~FilePrint()
     {
         delete _file_writer;
-    }
-
-    virtual void process(const Commands& commands) final {
-        if(commands.size() == 0)
-            return;
-
-        std::string name = "bulk";
-        name += boost::lexical_cast<std::string>(std::get<0>(*(commands.begin())));
-        name += ".log";
-
-        _file_writer->open(name);
-        for(auto c :commands)
-            _file_writer->out() << std::get<1>(c) << std::endl;
-        _file_writer->close();
     }
 };
 
@@ -146,6 +209,9 @@ private:
     void flush(Commands& commands)
     {
         if(commands.size() > 0) {
+            Metrics::get_metrics().update("reader.blocks");
+            Metrics::get_metrics().update("reader.commands", commands.size());
+
             process(commands);
             commands.clear();
         }
@@ -164,6 +230,7 @@ public:
         size_t bracket_counter = 0;
         std::string line;
         while(std::getline(in, line)) {
+            Metrics::get_metrics().update("reader.lines");
             if(line == "{") {
                 if(bracket_counter++ == 0)
                     flush(commands);
