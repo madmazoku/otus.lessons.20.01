@@ -4,7 +4,13 @@
 #include "../bin/version.h"
 
 #include <thread>
+#include <mutex>
+#include <condition_variable>
 #include <algorithm> 
+#include <queue>
+#include <fstream>
+
+#include <boost/timer/timer.hpp>
 
 BOOST_AUTO_TEST_SUITE( test_suite )
 
@@ -23,73 +29,78 @@ void eat_cpu(size_t power) {
 
 BOOST_AUTO_TEST_CASE( test_threads )
 {
-    std::thread t1([](){eat_cpu(12);});
-    std::thread t2([](){eat_cpu(12);});
-    std::thread t3([](){eat_cpu(12);});
-    std::thread t4([](){eat_cpu(12);});
-    std::thread t5([](){eat_cpu(12);});
-    std::thread t6([](){eat_cpu(12);});
-    std::thread t7([](){eat_cpu(12);});
-    std::thread t8([](){eat_cpu(12);});
+#ifdef __THREAD_TEST__
 
-    t1.join();
-    t2.join();
-    t3.join();
-    t4.join();
-    t5.join();
-    t6.join();
-    t7.join();
-    t8.join();
+    size_t hardware_concurrency = std::thread::hardware_concurrency();
+    std::cout << "hardware concurrency: " << hardware_concurrency << std::endl;
+
+    std::mutex tm;
+    std::condition_variable tcv;
+
+    std::ofstream out("test.csv", std::ios::app);
+    size_t max_thread_count = hardware_concurrency * 3;
+    for(size_t thread_count = 1; thread_count < max_thread_count + 1; ++thread_count) {
+        std::unique_lock<std::mutex> tl(tm);
+
+        boost::timer::cpu_timer cpu;
+        boost::timer::cpu_times start = cpu.elapsed();
+
+        std::queue<std::thread> threads;
+        for(size_t n = 0; n < thread_count; ++n)
+            threads.push(std::thread([](){
+                eat_cpu(12);
+            }));
+
+        while(!threads.empty()) {
+            threads.front().join();
+            threads.pop();
+        }
+
+        boost::timer::cpu_times end = cpu.elapsed();
+        boost::timer::cpu_times duration;
+
+        boost::timer::nanosecond_type wall = (end.wall - start.wall);
+        boost::timer::nanosecond_type user = (end.user - start.user);
+        boost::timer::nanosecond_type sys = (end.system - start.system);
+
+        std::cout << "threads: " << thread_count << std::endl;
+        std::cout << "real: " << (wall * 1e-9) << std::endl;
+        std::cout << "user: " << (user * 1e-9) << std::endl;
+        std::cout << "system: " << (sys * 1e-9) << std::endl;
+        std::cout << "u/r ratio: " << (1.0 * user / wall) << std::endl;
+        std::cout << std::endl;
+
+        out << thread_count << std::fixed
+            << '\t' << (1.0 * user / wall)
+            << '\t' << (wall * 1e-9)
+            << '\t' << (user * 1e-9)
+            << '\t' << (sys * 1e-9)
+            << std::endl;
+    }
+    out.close();
+
+#endif
+
+    BOOST_CHECK(true);
 }
 
 /*
-1: 100%
-real    1m1.627s
-user    1m1.572s
-sys 0m0.012s
-u/r: 1
+2 core x 2 hyperthreading
+threads <\t> u/r ratio <\t> real <\t> user <\t> system
+1   0.999812    60.401351   60.390000   0.000000
+2   1.996001    63.061099   125.870000  0.010000
+3   2.765745    87.770195   242.750000  0.190000
+4   3.818145    98.825476   377.330000  0.120000
+5   3.737951    126.034288  471.110000  0.290000
+6   3.895955    145.807634  568.060000  0.090000
+7   3.872968    171.514473  664.270000  0.120000
+8   3.860902    196.658704  759.280000  0.270000
+9   3.858632    220.689609  851.560000  0.210000
+10  3.741460    252.086102  943.170000  0.520000
+11  3.754773    276.077914  1036.610000 1.520000
+12  3.716745    303.773860  1129.050000 1.200000
 
-2: 200%
-real    1m3.647s
-user    2m6.976s
-sys 0m0.004s
-u/r: 2
-
-3: 291%-299%
-real    1m25.785s
-user    4m3.892s
-sys 0m0.156s
-u/r: 2.85
-
-4: 380%
-real    1m53.493s
-user    6m10.408s
-sys 0m1.068s
-u/r: 3.27
-
-5: 376%-379%
-real    2m8.023s
-user    7m48.308s
-sys 0m0.308s
-u/r: 3.65
-
-6: 376%-379%
-real    2m30.536s
-user    9m23.404s
-sys 0m0.356s
-u/r: 3.75
-
-7: 370%-376%
-real    2m54.279s
-user    10m58.924s
-sys 0m0.460s
-u/r: 3.78
-
-8: 380%
-real    3m22.799s
-user    12m32.328s
-sys 0m0.488s
-u/r: 3.72
+no meaning to use more then 4
 
 */
 
