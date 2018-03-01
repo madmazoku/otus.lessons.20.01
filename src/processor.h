@@ -9,7 +9,6 @@
 #include <map>
 
 #include <boost/lexical_cast.hpp>
-#include <boost/filesystem.hpp>
 
 #include "queue_processor.h"
 #include "metrics.h"
@@ -105,7 +104,6 @@ public:
     virtual void open(const std::string& name) = 0;
     virtual std::ostream& out() = 0;
     virtual void close() = 0;
-    virtual bool exists(const std::string& name) = 0;
     virtual IFileWriter* clone() = 0;
 };
 
@@ -123,9 +121,6 @@ public:
     }
     virtual void close() final {
         _out.close();
-    }
-    virtual bool exists(const std::string& name) final {
-        return boost::filesystem::exists(name);
     }
     virtual IFileWriter* clone() final {
         return new FileWriter;
