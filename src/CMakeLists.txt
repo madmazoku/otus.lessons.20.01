@@ -22,6 +22,8 @@ set(CPACK_PACKAGE_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
 
 set(CPACK_PACKAGE_CONTACT madmazoku@gmail.com)
 
+set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} "-pthread")
+
 include(CPack)
 
 enable_testing()
