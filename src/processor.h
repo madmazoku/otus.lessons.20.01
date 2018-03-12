@@ -14,6 +14,13 @@
 #include "queue_processor.h"
 #include "metrics.h"
 
+// Travis do not have it
+template<typename T, typename... Args>
+std::unique_ptr<T> make_unique(Args&&... args)
+{
+    return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
+}
+
 using Command = std::tuple<time_t, std::string>;
 using Commands = std::vector<Command>;
 
@@ -134,7 +141,7 @@ public:
         _out.close();
     }
     virtual IFileWriterPtr clone() final {
-        return std::make_unique<FileWriter>();
+        return make_unique<FileWriter>();
     }
 };
 
@@ -180,7 +187,7 @@ private:
     }
 
 public:
-    FilePrint(ProcessorSubscriber& ps, IFileWriterPtr file_writer = std::make_unique<FileWriter>()) : Processor(2), _file_writer(std::move(file_writer))
+    FilePrint(ProcessorSubscriber& ps, IFileWriterPtr file_writer = make_unique<FileWriter>()) : Processor(2), _file_writer(std::move(file_writer))
     {
         ps.subscribe(this);
     }
@@ -222,7 +229,7 @@ private:
     }
 
 public:
-    Reader(size_t N = 0, ITimePtr time = std::make_unique<Time>()) : _time(std::move(time)), _N(N) {}
+    Reader(size_t N = 0, ITimePtr time = make_unique<Time>()) : _time(std::move(time)), _N(N) {}
 
     void read(std::istream& in)
     {
