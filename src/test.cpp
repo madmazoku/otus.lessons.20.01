@@ -6,7 +6,7 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
-#include <algorithm> 
+#include <algorithm>
 #include <queue>
 #include <fstream>
 
@@ -19,7 +19,8 @@ BOOST_AUTO_TEST_CASE( test_version )
     BOOST_CHECK_GT(build_version(), 0);
 }
 
-void eat_cpu(size_t power) {
+void eat_cpu(size_t power)
+{
     std::vector<size_t> v(power);
     for(size_t p = 0; p < power; ++p)
         v[p] = p;
@@ -47,9 +48,9 @@ BOOST_AUTO_TEST_CASE( test_threads )
 
         std::queue<std::thread> threads;
         for(size_t n = 0; n < thread_count; ++n)
-            threads.push(std::thread([](){
-                eat_cpu(12);
-            }));
+            threads.push(std::thread([]() {
+            eat_cpu(12);
+        }));
 
         while(!threads.empty()) {
             threads.front().join();

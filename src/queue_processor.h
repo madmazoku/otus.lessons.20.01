@@ -7,7 +7,8 @@
 #include <map>
 
 template<typename T>
-class QueueProcessor {
+class QueueProcessor
+{
 private:
     std::queue<std::thread> _threads;
     std::queue<T> _tasks;
@@ -23,13 +24,16 @@ public:
 
     QueueProcessor() : _active_count(0), _terminate(false) {};
 
-    void start(size_t thread_count = std::thread::hardware_concurrency()) {
+    void start(size_t thread_count = std::thread::hardware_concurrency())
+    {
         size_t qid = 0;
         while(_threads.empty() || _threads.size() < thread_count) {
-            _threads.push(std::thread([this,qid](){
+            _threads.push(std::thread([this,qid]() {
                 while(true) {
                     std::unique_lock<std::mutex> lock_thread(_thread_mutex);
-                    _thread_cv.wait(lock_thread, [this](){ return !_tasks.empty() || _terminate; });
+                    _thread_cv.wait(lock_thread, [this]() {
+                        return !_tasks.empty() || _terminate;
+                    });
                     if(_tasks.empty() && _terminate)
                         break;
 
@@ -49,31 +53,38 @@ public:
         }
     }
 
-    void add(const T& task, bool now) {
+    void add(const T& task, bool now)
+    {
         std::unique_lock<std::mutex> lock_thread(_thread_mutex);
         _tasks.push(task);
         if(now)
             _thread_cv.notify_all();
     }
 
-    void wait() {
+    void wait()
+    {
         std::unique_lock<std::mutex> lock_thread(_thread_mutex);
-        _thread_cv.wait(lock_thread, [&](){ return _active_count == 0 && _tasks.empty(); });
+        _thread_cv.wait(lock_thread, [&]() {
+            return _active_count == 0 && _tasks.empty();
+        });
     }
 
-    void stop() {
+    void stop()
+    {
         std::lock_guard<std::mutex> lock_thread(_thread_mutex);
         _terminate = true;
         _thread_cv.notify_all();
     }
 
-    void clear() {
+    void clear()
+    {
         std::lock_guard<std::mutex> lock_thread(_thread_mutex);
         while(!_tasks.empty())
             _tasks.pop();
     }
 
-    void finish() {
+    void finish()
+    {
         while(!_threads.empty()) {
             _threads.front().join();
             _threads.pop();

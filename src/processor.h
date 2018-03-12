@@ -17,12 +17,14 @@
 using Command = std::tuple<time_t, std::string>;
 using Commands = std::vector<Command>;
 
-std::ostream& operator<<(std::ostream& out, const Command& command) {
+std::ostream& operator<<(std::ostream& out, const Command& command)
+{
     out << " {" << std::get<0>(command) << ", " << std::get<1>(command) << "}";
     return out;
 }
 
-std::ostream& operator<<(std::ostream& out, const Commands& commands) {
+std::ostream& operator<<(std::ostream& out, const Commands& commands)
+{
     for(auto c : commands)
         std::cerr << ' ' << c;
     return out;
@@ -32,15 +34,18 @@ class Processor : public QueueProcessor<Commands>
 {
 public:
 
-    Processor(size_t thread_count) : QueueProcessor<Commands>() {
+    Processor(size_t thread_count) : QueueProcessor<Commands>()
+    {
         start(thread_count);
     }
 
-    void process(const Commands& commands) {
+    void process(const Commands& commands)
+    {
         add(commands, true);
     }
 
-    void done() {
+    void done()
+    {
         stop();
         wait();
         finish();
