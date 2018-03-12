@@ -7,6 +7,7 @@
 #include <ctime>
 #include <tuple>
 #include <map>
+#include <memory>
 
 #include <boost/lexical_cast.hpp>
 
@@ -101,11 +102,16 @@ public:
 class IFileWriter
 {
 public:
+    using IFileWriterPtr = std::unique_ptr<IFileWriter>;
+
     virtual void open(const std::string& name) = 0;
     virtual std::ostream& out() = 0;
     virtual void close() = 0;
-    virtual IFileWriter* clone() = 0;
+    virtual IFileWriterPtr clone() = 0;
+
+    virtual ~IFileWriter() = default;
 };
+using IFileWriterPtr = IFileWriter::IFileWriterPtr;
 
 class FileWriter : public IFileWriter
 {
@@ -122,15 +128,15 @@ public:
     virtual void close() final {
         _out.close();
     }
-    virtual IFileWriter* clone() final {
-        return new FileWriter;
+    virtual IFileWriterPtr clone() final {
+        return std::make_unique<FileWriter>();
     }
 };
 
 class FilePrint : public Processor
 {
 private:
-    IFileWriter* _file_writer;
+    IFileWriterPtr _file_writer;
     std::map<time_t, size_t> _log_counter;
     std::mutex _log_counter_mutex;
 
@@ -161,22 +167,17 @@ private:
         }
         std::string cnt = boost::lexical_cast<std::string>(log_counter);
 
-        IFileWriter* file_writer = _file_writer->clone();
+        IFileWriterPtr file_writer(_file_writer->clone());
         file_writer->open(name + cnt + ".log");
         for(auto c :commands)
             file_writer->out() << std::get<1>(c) << std::endl;
         file_writer->close();
-        delete file_writer;
     }
 
 public:
-    FilePrint(ProcessorSubscriber& ps, IFileWriter* file_writer = new FileWriter) : Processor(2), _file_writer(file_writer)
+    FilePrint(ProcessorSubscriber& ps, IFileWriterPtr file_writer = std::make_unique<FileWriter>()) : Processor(2), _file_writer(std::move(file_writer))
     {
         ps.subscribe(this);
-    }
-    ~FilePrint()
-    {
-        delete _file_writer;
     }
 };
 
@@ -184,7 +185,10 @@ class ITime
 {
 public:
     virtual time_t get() = 0;
+
+    virtual ~ITime() = default;
 };
+using ITimePtr = std::unique_ptr<ITime>;
 
 class Time : public ITime
 {
@@ -197,7 +201,7 @@ public:
 class Reader : public ProcessorSubscriber
 {
 private:
-    ITime* _time;
+    ITimePtr _time;
 
     size_t _N;
 
@@ -213,11 +217,7 @@ private:
     }
 
 public:
-    Reader(size_t N = 0, ITime* time = new Time) : _time(time), _N(N) {}
-    ~Reader()
-    {
-        delete _time;
-    }
+    Reader(size_t N = 0, ITimePtr time = std::make_unique<Time>()) : _time(std::move(time)), _N(N) {}
 
     void read(std::istream& in)
     {
